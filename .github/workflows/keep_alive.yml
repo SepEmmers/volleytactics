@@ -1,0 +1,28 @@
+name: Prevent Supabase Pause
+on:
+  schedule:
+    - cron: '0 8 */3 * *' # Run every 3 days at 8:00 UTC
+  workflow_dispatch: # Allows manual run
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Database
+        env:
+          # Using the credentials provided in the codebase
+          SUPABASE_URL: https://potirivlkrrqocrqkiqm.supabase.co
+          SUPABASE_KEY: sb_publishable_43ROEjKTO3LKMYk4PWK9Tw_5jJonbLU
+        run: |
+          echo "Pinging Supabase to prevent inactivity pause..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$SUPABASE_URL/rest/v1/strategies?select=id&limit=1" \
+            -H "apikey: $SUPABASE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_KEY")
+          
+          if [ "$response" -eq 200 ] || [ "$response" -eq 206 ]; then
+            echo "Success! Supabase responded with $response"
+          else
+            echo "Warning: Supabase responded with $response"
+            # We don't exit with error to avoid spanning failure notifications if the DB is just empty or something,
+            # but ideally 200/206 is what we want.
+          fi
