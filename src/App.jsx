@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, RotateCcw, PenTool, Save, Shield, Swords, ArrowDownToLine, Hand, Eye, X, Zap, Layers, Trash2, FileText, PlusCircle, UserCog, BookOpen, Edit3, Menu } from 'lucide-react';
+import { Camera, RotateCcw, PenTool, Save, Shield, Swords, ArrowDownToLine, Hand, Eye, X, Zap, Layers, Trash2, FileText, PlusCircle, UserCog, BookOpen, Edit3, Menu, Cloud, Download, Globe } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { supabase } from './supabaseClient';
 
 const VolleyTacticsPro = () => {
   const mountRef = useRef(null);
@@ -18,9 +19,12 @@ const VolleyTacticsPro = () => {
   const [showAllAttacks, setShowAllAttacks] = useState(false);
 
   // Data Management
-  const [savedTactics, setSavedTactics] = useState([]); 
-  const [activeTacticData, setActiveTacticData] = useState({}); 
-  const [currentTacticName, setCurrentTacticName] = useState(null); 
+  const [savedTactics, setSavedTactics] = useState([]);
+  const [communityTactics, setCommunityTactics] = useState([]); // Cloud tactics
+  const [isLoadingCloud, setIsLoadingCloud] = useState(false);
+  const [showCloudModal, setShowCloudModal] = useState(false);
+  const [activeTacticData, setActiveTacticData] = useState({});
+  const [currentTacticName, setCurrentTacticName] = useState(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveNameInput, setSaveNameInput] = useState("");
   const [playerNameInput, setPlayerNameInput] = useState("");
@@ -654,6 +658,34 @@ const VolleyTacticsPro = () => {
       setShowSaveModal(false); setSaveNameInput("");
   };
 
+  const fetchCommunityTactics = async () => {
+      setIsLoadingCloud(true);
+      const { data, error } = await supabase.from('strategies').select('*').order('created_at', { ascending: false }).limit(20);
+      if(!error) setCommunityTactics(data);
+      setIsLoadingCloud(false);
+  };
+
+  const uploadTactic = async () => {
+      if(!saveNameInput) return;
+      setIsLoadingCloud(true);
+      snapshotState();
+      const { error } = await supabase.from('strategies').insert([{ name: saveNameInput, data: activeTacticData }]);
+      if(!error) {
+          alert("Strategie succesvol gedeeld!");
+          setShowSaveModal(false); setSaveNameInput("");
+      } else {
+          alert("Fout bij uploaden: " + error.message);
+      }
+      setIsLoadingCloud(false);
+  };
+
+  const loadCloudTactic = (strategy) => {
+      setActiveTacticData(strategy.data);
+      setCurrentTacticName(strategy.name);
+      setTimeout(() => updateSceneState(), 50);
+      setShowCloudModal(false);
+  };
+
   // --- DRAWING ---
   const startDrawing = (e) => {
     dragStateRef.current.isDown = true;
@@ -719,6 +751,9 @@ const VolleyTacticsPro = () => {
                         <BookOpen size={14} className="text-orange-400"/> {st.name}
                     </button>
                 ))}
+                <button onClick={() => { fetchCommunityTactics(); setShowCloudModal(true); setIsSidebarOpen(false); }} className="w-full text-left p-2 rounded text-xs bg-indigo-900 hover:bg-indigo-800 flex items-center gap-2 mt-2 border border-indigo-700">
+                    <Globe size={14} className="text-indigo-300"/> Community Tactics
+                </button>
             </div>
 
             <div className="space-y-1 pt-2 border-t border-slate-700">
@@ -789,10 +824,48 @@ const VolleyTacticsPro = () => {
 
              {showSaveModal && (
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50">
-                    <div className="bg-slate-800 p-6 rounded w-80">
-                        <h3 className="font-bold mb-2">Opslaan</h3>
-                        <input value={saveNameInput} onChange={e=>setSaveNameInput(e.target.value)} className="w-full bg-slate-900 p-2 rounded mb-4" placeholder="Naam tactics..."/>
-                        <div className="flex justify-end gap-2"><button onClick={()=>setShowSaveModal(false)}>Annuleren</button><button onClick={saveTactic} className="bg-blue-600 px-4 py-2 rounded">Opslaan</button></div>
+                    <div className="bg-slate-800 p-6 rounded w-80 shadow-2xl border border-slate-600">
+                        <h3 className="font-bold mb-2 text-lg">Opslaan / Delen</h3>
+                        <p className="text-xs text-slate-400 mb-4">Sla lokaal op of deel direct met de community.</p>
+                        <input value={saveNameInput} onChange={e=>setSaveNameInput(e.target.value)} className="w-full bg-slate-900 p-2 rounded mb-4 border border-slate-600 focus:border-blue-500 outline-none" placeholder="Naam strategie..."/>
+                        
+                        <div className="flex flex-col gap-2">
+                            <button onClick={saveTactic} className="bg-blue-600 p-2 rounded flex items-center justify-center gap-2 hover:bg-blue-500 font-bold"><Save size={16}/> Lokaal Opslaan</button>
+                            <button onClick={uploadTactic} disabled={isLoadingCloud} className="bg-indigo-600 p-2 rounded flex items-center justify-center gap-2 hover:bg-indigo-500 font-bold border border-indigo-400">
+                                {isLoadingCloud ? <span className="animate-spin">⌛</span> : <Cloud size={16}/>} Uploaden naar Cloud
+                            </button>
+                            <button onClick={()=>setShowSaveModal(false)} className="mt-2 text-slate-400 hover:text-white text-sm">Annuleren</button>
+                        </div>
+                    </div>
+                </div>
+             )}
+
+             {showCloudModal && (
+                <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                    <div className="bg-slate-800 p-0 rounded-lg w-full max-w-md shadow-2xl border border-slate-600 flex flex-col max-h-[80vh]">
+                        <div className="p-4 border-b border-slate-700 flex justify-between items-center">
+                             <h3 className="font-bold text-lg flex items-center gap-2"><Globe size={20} className="text-indigo-400"/> Community Tactics</h3>
+                             <button onClick={()=>setShowCloudModal(false)}><X size={20}/></button>
+                        </div>
+                        <div className="p-4 overflow-y-auto flex-1">
+                            {isLoadingCloud ? (
+                                <div className="text-center py-8 text-slate-400">Laden...</div>
+                            ) : communityTactics.length === 0 ? (
+                                <div className="text-center py-8 text-slate-400">Geen strategieën gevonden. Wees de eerste!</div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {communityTactics.map(st => (
+                                        <div key={st.id} className="bg-slate-700 p-3 rounded flex justify-between items-center hover:bg-slate-600 transition-colors">
+                                            <div>
+                                                <div className="font-bold text-sm">{st.name}</div>
+                                                <div className="text-[10px] text-slate-400">{new Date(st.created_at).toLocaleDateString()}</div>
+                                            </div>
+                                            <button onClick={() => loadCloudTactic(st)} className="bg-indigo-600 p-2 rounded hover:bg-indigo-500"><Download size={16}/></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
              )}
